@@ -1,5 +1,5 @@
 > Default dev port is now `5173`, it now uses Vite under the hood.
-# Svelte v4 + TS + Tailwind 3.3 app
+# Narrator
 
 **NOTE** Dark mode stopped working with the Rollup based template, and since it isn't supported anymore, I've switched this to the Vite based template.
 
