@@ -4,18 +4,26 @@ import { readable, type Readable } from 'svelte/store';
 export class Session extends EventTarget {
   public id: Readable<string>;
   private connections: DataConnection[] = [];
+  private pending: [string, string][] = [];
   private me: Peer;
   constructor(public gm: boolean = false) {
     super();
-    const me = new Peer((null as unknown) as string , {debug: 2});
+    const me = new Peer((null as unknown) as string , {debug: 3});
     this.id = readable<string>('', (set) => {
       me.on('open', (id) => {
         set(id);
+        console.log('I AM', id);
+        if (this.pending.length) {
+          this.processPending();
+        }
       });
     });
     me.on('connection', (dc) => {
       console.log('RECEIVED CONNECTION', dc.metadata);
       this.addConnection(dc);
+      this.dispatchEvent(new CustomEvent('status', {
+        detail: `New connection from ${dc.metadata.name}`,
+      }));
     });
     me.on('error', err => console.error('PEER ERROR', err));
     me.on('close', () => console.log('PEER CLOSED'));
@@ -28,17 +36,40 @@ export class Session extends EventTarget {
     this.connections.forEach(dc => {
       console.log('SEND TO', dc);
       dc.send(data);
-    })
+    });
+    this.dispatchEvent(new CustomEvent('data', {
+      detail: {
+        name: this.gm ? 'GM' : this.connections[0]?.metadata?.name,
+        data
+      }
+    }));
   }
 
   connect(to: string, name: string) {
+    console.log('ATTEMPT CONNECTION', to, name);
+    if (!this.me.id) {
+      this.pending.push([to, name]);
+    } else {
+      this.makeConn(to, name);
+    }
+  }
+
+  private makeConn(to: string, name: string) {
     const dc = this.me.connect(to, {
       metadata: {
         name
       },
-      serialization: 'json'
+      reliable: true,
     });
     this.addConnection(dc);
+  }
+
+  private processPending() {
+    console.log('PROCESSING', this.pending.length);
+    this.pending.forEach(([to, name]) => {
+      this.makeConn(to, name);
+    });
+    this.pending = [];
   }
 
   private addConnection(dc: DataConnection) {
@@ -51,10 +82,10 @@ export class Session extends EventTarget {
       console.log('DATA', data);
       this.dispatchEvent(new CustomEvent('data', {
         detail: {
-          name: dc.metadata?.name,
+          name: this.gm ? dc.metadata?.name : 'GM',
           data
         }
-      }))
+      }));
     });
     dc.on('error', err => {
       console.error('CONNECTION ERROR', err);
@@ -71,6 +102,9 @@ export function hostSession() {
 
 export function joinSession(id: string, name: string) {
   const session = new Session();
-  session.connect(id, name);
+  //setTimeout(() => {
+  //  console.log('DONE WAITING');
+    session.connect(id, name);
+  //}, 2000);
   return session;
 }
